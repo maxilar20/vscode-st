@@ -202,8 +202,20 @@ export class STFormatterProvider implements vscode.DocumentFormattingEditProvide
 
         let text = document.getText();
 
-        text = this.spaces(text);
         text = this.capitalize(text);
+
+        text = this.spaces(text);
+
+        let regEndFunctions = new RegExp(`\\bEND_IF;|\\bEND_CASE;|\\bEND_WHILE;|\\bEND_VAR`, "g");
+        text = this.addLineEndingAfterRegex(text, regEndFunctions);
+
+        text = this.removeTabsAndSpacesFromEmptyLines(text);
+        text = this.reduceLineBreaks(text);
+
+        text = this.tabulate(text);
+
+        text = this.removeLineBreaksBetweenIfAndThen(text);
+        text = this.removeLineBreaksBetweenElsifAndThen(text);
 
         out.push(
             new vscode.TextEdit(
@@ -216,6 +228,55 @@ export class STFormatterProvider implements vscode.DocumentFormattingEditProvide
         );
 
         return out;
+    }
+
+    removeTabsAndSpacesFromEmptyLines(text: string): string {
+        // Split the text into lines
+        const lines = text.split("\n");
+
+        // Iterate through each line
+        const processedLines = lines.map((line) => {
+            // If the line is empty or contains only tabs/spaces, remove them
+            if (line.trim() === "") {
+                return "";
+            } else {
+                // Otherwise, return the line as is
+                return line;
+            }
+        });
+
+        // Join the processed lines back together with newline characters
+        const result = processedLines.join("\n");
+
+        return result;
+    }
+
+    addLineEndingAfterRegex(text: string, regex: RegExp): string {
+        // Replace the matches of the regex with the match followed by a line ending
+        const result = text.replace(regex, (match) => match + "\n");
+
+        return result;
+    }
+
+    removeLineBreaksBetweenIfAndThen(expression: string): string {
+        const regex = /\bIF\b\s+(.*?)\s+\bTHEN\b/gs;
+        const result = expression.replace(regex, (match) => match.split(/\s+/).join(" ").trim());
+        return result;
+    }
+    removeLineBreaksBetweenElsifAndThen(expression: string): string {
+        const regex = /\bELSIF\b\s+(.*?)\s+\bTHEN\b/gs;
+        const result = expression.replace(regex, (match) => match.split(/\s+/).join(" ").trim());
+        return result;
+    }
+
+    reduceLineBreaks(text: string): string {
+        // Use regular expression to find instances of more than three consecutive line breaks
+        const regex = /(\n{3,})/g;
+
+        // Replace instances of more than three consecutive line breaks with two line breaks
+        const result = text.replace(regex, "\n\n\n");
+
+        return result;
     }
 
     spaces(text: string): string {
@@ -291,18 +352,25 @@ export class STFormatterProvider implements vscode.DocumentFormattingEditProvide
         // regEx = new RegExp(`;[\s]+\n$`, "ig");
         text = text.replace(/;[\s]+\n$/g, ";\n");
 
+        return text;
+    }
+
+    tabulate(text: string): string {
         // NOTES:
         // - Comments at the end of IF does not work
         // - Comments need more work
         var lines = text.split(/\r\n|\r|\n/);
         var tab = 0;
 
-        let regEx11 = new RegExp("\\bIF|\\bCASE|\\bWHILE|\\bVAR", "g");
+        let regEx11 = new RegExp("\\bIF\\b|\\bCASE\\b|\\bWHILE\\b|\\bVAR\\b", "g");
         let regEx12 = new RegExp("\\bELSIF|\\bELSE", "g");
         let regEx13 = new RegExp(`\\bEND_IF;|\\bEND_CASE;|\\bEND_WHILE;|\\bEND_VAR`, "g");
 
-        const dynamicPattern = "\\(\\*|\\/\\/";
+        let regEx20 = new RegExp("\\b\\d+:(?:\\s*\\(\\*.*?\\*\\))?", "g");
+
+        const dynamicPattern = "^\\(\\*|^\\/\\/";
         let regEx14 = new RegExp(dynamicPattern, "g");
+
         for (var i = 0; i < lines.length; i++) {
             lines[i] = lines[i].trim();
             lines[i] = lines[i].trim();
@@ -311,7 +379,7 @@ export class STFormatterProvider implements vscode.DocumentFormattingEditProvide
                 if (regEx11.test(lines[i])) {
                     lines[i] = "\t".repeat(tab) + lines[i];
                     tab = tab + 1;
-                } else if (regEx12.test(lines[i])) {
+                } else if (regEx12.test(lines[i]) || regEx20.test(lines[i])) {
                     lines[i] = "\t".repeat(tab - 1) + lines[i];
                 } else if (regEx13.test(lines[i])) {
                     if (tab > 0) {
